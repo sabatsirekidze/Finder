@@ -1,0 +1,77 @@
+// Finder — sync with db/schema.sql (Alembic 001 + 002)
+
+Table users {
+  id int [pk, increment]
+  email varchar(255) [not null, unique]
+  password_hash varchar(255) [not null]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table profiles {
+  user_id int [pk, ref: > users.id]
+  display_name varchar(120) [not null]
+  bio text
+  birth_date date
+  city varchar(120)
+  gender varchar(40)
+  looking_for varchar(40)
+  hair_color varchar(40)
+  height_cm int
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (hair_color)
+  }
+}
+
+Table dating_preferences {
+  user_id int [pk, ref: > users.id]
+  partner_age_min int
+  partner_age_max int
+  partner_genders text[]
+  partner_hair_colors text[]
+  prefer_same_city boolean [not null, default: false]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: 'GIN indexes on partner_genders and partner_hair_colors in Postgres (see schema.sql).'
+}
+
+Table swipes {
+  id int [pk, increment]
+  swiper_user_id int [not null, ref: > users.id]
+  target_user_id int [not null, ref: > users.id]
+  direction varchar(10) [not null, note: 'like or pass']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (swiper_user_id)
+    (target_user_id)
+    (target_user_id, created_at)
+  }
+}
+
+Table matches {
+  id int [pk, increment]
+  user_low_id int [not null, ref: > users.id, note: 'always smaller users.id']
+  user_high_id int [not null, ref: > users.id, note: 'always larger users.id']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_low_id)
+    (user_high_id)
+  }
+}
+
+Table messages {
+  id int [pk, increment]
+  match_id int [not null, ref: > matches.id]
+  sender_user_id int [not null, ref: > users.id]
+  body text [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (match_id)
+    (sender_user_id)
+    (match_id, created_at)
+  }
+}

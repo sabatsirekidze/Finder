@@ -4,7 +4,7 @@ Work is split so each phase stays reviewable and the repo stays small (no genera
 
 | Phase | Branch (suggested) | What lands in the repo |
 |-------|--------------------|-------------------------|
-| **A** | `PhaseA` | Postgres via Docker, SQLAlchemy models, Alembic migrations, `dating_preferences` + profile traits, `db/schema.sql`, `db/schema.dbml`, Faker seed, [`DATABASE_COURSE_DESCRIPTION.md`](DATABASE_COURSE_DESCRIPTION.md). |
+| **A** | `PhaseA` | Postgres via Docker, SQLAlchemy models, Alembic migrations, `dating_preferences` + profile traits (supports discovery filters: city, gender, looking_for, age/hair prefs), discovery indexes, `db/schema.sql`, `db/schema.dbml`, Faker seed, [`DATABASE_COURSE_DESCRIPTION.md`](DATABASE_COURSE_DESCRIPTION.md). **No** batch recommendation API yet — Phase B. |
 | **B** | `PhaseB` | FastAPI app, CRUD, match creation rules, optional SQL files for the three report queries. |
 | **C** | `PhaseC` | React (Vite) client; env points at local API. |
 | **D** | `PhaseD` or `main` | Report assets only if needed (ERD PNG export is **not** stored — generate from `db/schema.dbml`). |

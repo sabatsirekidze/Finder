@@ -1,5 +1,31 @@
 // Finder — sync with db/schema.sql (Alembic 001 + 002)
 
+Enum swipe_direction {
+  smash
+  pass
+}
+
+Enum profile_gender {
+  woman
+  man
+  nonbinary
+}
+
+Enum looking_for {
+  women
+  men
+  everyone
+}
+
+Enum hair_color {
+  black
+  brown
+  blonde
+  red
+  gray
+  other
+}
+
 Table users {
   id int [pk, increment]
   email varchar(255) [not null, unique]
@@ -13,14 +39,16 @@ Table profiles {
   bio text
   birth_date date
   city varchar(120)
-  gender varchar(40)
-  looking_for varchar(40)
-  hair_color varchar(40)
+  gender profile_gender
+  looking_for looking_for
+  hair_color hair_color
   height_cm int
   updated_at timestamptz [not null, default: `now()`]
 
   indexes {
     (hair_color)
+    (updated_at)
+    (city)
   }
 }
 
@@ -28,19 +56,37 @@ Table dating_preferences {
   user_id int [pk, ref: > users.id]
   partner_age_min int
   partner_age_max int
-  partner_genders text[]
-  partner_hair_colors text[]
   prefer_same_city boolean [not null, default: false]
   updated_at timestamptz [not null, default: `now()`]
 
-  Note: 'GIN indexes on partner_genders and partner_hair_colors in Postgres (see schema.sql).'
+  Note: 'Scalar filters only (1NF). Multi-valued partner genders/hair colors live in child tables below.'
+}
+
+Table dating_preference_genders {
+  user_id int [not null, ref: > dating_preferences.user_id]
+  gender profile_gender [not null]
+
+  indexes {
+    (user_id, gender) [pk]
+    (gender)
+  }
+}
+
+Table dating_preference_hair_colors {
+  user_id int [not null, ref: > dating_preferences.user_id]
+  hair_color hair_color [not null]
+
+  indexes {
+    (user_id, hair_color) [pk]
+    (hair_color)
+  }
 }
 
 Table swipes {
   id int [pk, increment]
   swiper_user_id int [not null, ref: > users.id]
   target_user_id int [not null, ref: > users.id]
-  direction varchar(10) [not null, note: 'like or pass']
+  direction swipe_direction [not null]
   created_at timestamptz [not null, default: `now()`]
 
   indexes {
@@ -74,4 +120,6 @@ Table messages {
     (sender_user_id)
     (match_id, created_at)
   }
+
+  Note: 'Chat thread key: user taps a match in the list → app uses matches.id → SELECT messages WHERE match_id = …. Storing both user ids on each message would duplicate the match row and complicate history queries.'
 }

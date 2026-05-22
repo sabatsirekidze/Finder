@@ -25,10 +25,21 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 load_dotenv(ROOT / ".env")
 
-from app.models import DatingPreferences, Match, Message, Profile, Swipe, User  # noqa: E402
+from app.enums import HairColor, LookingFor, ProfileGender, SwipeDirection  # noqa: E402
+from app.models import (  # noqa: E402
+    DatingPreferenceGender,
+    DatingPreferenceHairColor,
+    DatingPreferences,
+    Match,
+    Message,
+    Profile,
+    Swipe,
+    User,
+)
 
-HAIR_COLORS = ("black", "brown", "blonde", "red", "gray", "other")
-GENDERS = ("woman", "man", "nonbinary")
+HAIR_COLORS = tuple(HairColor)
+GENDERS = tuple(ProfileGender)
+LOOKING_FOR_OPTIONS = tuple(LookingFor)
 
 
 def age_years(birth: date, today: date | None = None) -> int:
@@ -73,7 +84,7 @@ def main() -> None:
                 birth_date=bd,
                 city=fake.city(),
                 gender=random.choice([*GENDERS, None]),
-                looking_for=random.choice(["women", "men", "everyone", None]),
+                looking_for=random.choice([*LOOKING_FOR_OPTIONS, None]),
                 hair_color=random.choice(HAIR_COLORS),
                 height_cm=random.randint(155, 198),
             )
@@ -97,11 +108,13 @@ def main() -> None:
                     user_id=p.user_id,
                     partner_age_min=p_min,
                     partner_age_max=p_max,
-                    partner_genders=list(g_choices),
-                    partner_hair_colors=list(h_choices),
                     prefer_same_city=random.random() < 0.35,
                 )
             )
+            for g in g_choices:
+                session.add(DatingPreferenceGender(user_id=p.user_id, gender=g))
+            for h in h_choices:
+                session.add(DatingPreferenceHairColor(user_id=p.user_id, hair_color=h))
 
         ids = [u.id for u in users]
         seen_pairs: set[tuple[int, int]] = set()
@@ -113,19 +126,19 @@ def main() -> None:
             if key in seen_pairs:
                 continue
             seen_pairs.add(key)
-            direction = "like" if random.random() < 0.52 else "pass"
+            direction = SwipeDirection.SMASH if random.random() < 0.52 else SwipeDirection.PASS
             swipes.append(Swipe(swiper_user_id=a, target_user_id=b, direction=direction))
         session.add_all(swipes)
         session.flush()
 
-        like_pairs = {
+        smash_pairs = {
             (s.swiper_user_id, s.target_user_id)
             for s in swipes
-            if s.direction == "like"
+            if s.direction == SwipeDirection.SMASH
         }
         mutual: set[tuple[int, int]] = set()
-        for a, b in like_pairs:
-            if (b, a) in like_pairs:
+        for a, b in smash_pairs:
+            if (b, a) in smash_pairs:
                 mutual.add((a, b) if a < b else (b, a))
 
         matches: list[Match] = []

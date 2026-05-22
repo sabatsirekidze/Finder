@@ -1,5 +1,11 @@
--- Finder canonical DDL (Phase A + preferences) — matches Alembic 001_phase_a + 002_dating_preferences.
+-- Finder canonical DDL (Phase A + preferences) — matches Alembic 001 + 002.
 -- Prefer: `docker compose up -d` then `cd backend && alembic upgrade head`
+-- After changing migrations on an existing DB: reset (see README) or downgrade to base.
+
+CREATE TYPE swipe_direction AS ENUM ('smash', 'pass');
+CREATE TYPE profile_gender AS ENUM ('woman', 'man', 'nonbinary');
+CREATE TYPE looking_for AS ENUM ('women', 'men', 'everyone');
+CREATE TYPE hair_color AS ENUM ('black', 'brown', 'blonde', 'red', 'gray', 'other');
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -14,22 +20,22 @@ CREATE TABLE profiles (
     bio TEXT,
     birth_date DATE,
     city VARCHAR(120),
-    gender VARCHAR(40),
-    looking_for VARCHAR(40),
-    hair_color VARCHAR(40),
+    gender profile_gender,
+    looking_for looking_for,
+    hair_color hair_color,
     height_cm INTEGER,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_profiles_height_cm CHECK (height_cm IS NULL OR (height_cm BETWEEN 120 AND 230))
 );
 
 CREATE INDEX ix_profiles_hair_color ON profiles (hair_color);
+CREATE INDEX ix_profiles_updated_at ON profiles (updated_at);
+CREATE INDEX ix_profiles_city ON profiles (city);
 
 CREATE TABLE dating_preferences (
     user_id INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
     partner_age_min INTEGER,
     partner_age_max INTEGER,
-    partner_genders TEXT[],
-    partner_hair_colors TEXT[],
     prefer_same_city BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_dp_partner_age_min CHECK (partner_age_min IS NULL OR partner_age_min BETWEEN 18 AND 99),
@@ -39,17 +45,30 @@ CREATE TABLE dating_preferences (
     )
 );
 
-CREATE INDEX ix_dating_preferences_partner_genders ON dating_preferences USING GIN (partner_genders);
-CREATE INDEX ix_dating_preferences_partner_hair_colors ON dating_preferences USING GIN (partner_hair_colors);
+-- 1NF: one row per allowed gender / hair color (no TEXT[] repeating groups).
+CREATE TABLE dating_preference_genders (
+    user_id INTEGER NOT NULL REFERENCES dating_preferences (user_id) ON DELETE CASCADE,
+    gender profile_gender NOT NULL,
+    PRIMARY KEY (user_id, gender)
+);
+
+CREATE INDEX ix_dating_preference_genders_gender ON dating_preference_genders (gender);
+
+CREATE TABLE dating_preference_hair_colors (
+    user_id INTEGER NOT NULL REFERENCES dating_preferences (user_id) ON DELETE CASCADE,
+    hair_color hair_color NOT NULL,
+    PRIMARY KEY (user_id, hair_color)
+);
+
+CREATE INDEX ix_dating_preference_hair_colors_hair_color ON dating_preference_hair_colors (hair_color);
 
 CREATE TABLE swipes (
     id SERIAL PRIMARY KEY,
     swiper_user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     target_user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    direction VARCHAR(10) NOT NULL,
+    direction swipe_direction NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_swipe_not_self CHECK (swiper_user_id <> target_user_id),
-    CONSTRAINT ck_swipe_direction CHECK (direction IN ('like', 'pass')),
     CONSTRAINT uq_swipe_pair UNIQUE (swiper_user_id, target_user_id)
 );
 
@@ -69,6 +88,7 @@ CREATE TABLE matches (
 CREATE INDEX ix_matches_user_low_id ON matches (user_low_id);
 CREATE INDEX ix_matches_user_high_id ON matches (user_high_id);
 
+-- match_id = conversation thread (user opens a match, then loads messages for that match_id).
 CREATE TABLE messages (
     id SERIAL PRIMARY KEY,
     match_id INTEGER NOT NULL REFERENCES matches (id) ON DELETE CASCADE,

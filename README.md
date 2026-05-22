@@ -53,7 +53,17 @@ cd backend
 python scripts\verify_phase_a.py
 ```
 
-You should see `OK: connected`, all tables listed, Alembic revision `002_dating_preferences`, and non-zero row counts after seeding.
+Or from the scripts folder:
+
+```powershell
+cd backend\scripts
+..\.venv\Scripts\activate
+python verify_phase_a.py
+```
+
+You should see `OK: connected`, all tables listed (including `dating_preference_genders` and `dating_preference_hair_colors`), Alembic revision `002_dating_preferences`, and non-zero row counts after seeding.
+
+**Schema changed on an existing DB?** Reset volumes (see **Reset database** below) or run `alembic upgrade head` for new revisions (e.g. `003_discovery_indexes`).
 
 **Optional manual SQL** (password `finder` from `.env.example`):
 
@@ -77,6 +87,8 @@ If your container name differs, run `docker ps` and substitute the `postgres` se
 | `db/seeds/seed.py` | Faker seed |
 
 ### Reset database
+
+Use this after pulling schema changes on Phase A (e.g. ENUM types, 1NF preference tables):
 
 ```bash
 docker compose down -v

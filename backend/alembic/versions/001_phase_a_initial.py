@@ -10,14 +10,35 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision: str = "001_phase_a"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+swipe_direction = postgresql.ENUM("smash", "pass", name="swipe_direction", create_type=False)
+profile_gender = postgresql.ENUM("woman", "man", "nonbinary", name="profile_gender", create_type=False)
+looking_for = postgresql.ENUM("women", "men", "everyone", name="looking_for", create_type=False)
+
+
+def _create_phase_a_enums() -> None:
+    bind = op.get_bind()
+    postgresql.ENUM("smash", "pass", name="swipe_direction").create(bind, checkfirst=True)
+    postgresql.ENUM("woman", "man", "nonbinary", name="profile_gender").create(bind, checkfirst=True)
+    postgresql.ENUM("women", "men", "everyone", name="looking_for").create(bind, checkfirst=True)
+
+
+def _drop_phase_a_enums() -> None:
+    bind = op.get_bind()
+    postgresql.ENUM(name="looking_for").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="profile_gender").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="swipe_direction").drop(bind, checkfirst=True)
+
 
 def upgrade() -> None:
+    _create_phase_a_enums()
+
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -39,8 +60,8 @@ def upgrade() -> None:
         sa.Column("bio", sa.Text(), nullable=True),
         sa.Column("birth_date", sa.Date(), nullable=True),
         sa.Column("city", sa.String(length=120), nullable=True),
-        sa.Column("gender", sa.String(length=40), nullable=True),
-        sa.Column("looking_for", sa.String(length=40), nullable=True),
+        sa.Column("gender", profile_gender, nullable=True),
+        sa.Column("looking_for", looking_for, nullable=True),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
@@ -55,7 +76,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("swiper_user_id", sa.Integer(), nullable=False),
         sa.Column("target_user_id", sa.Integer(), nullable=False),
-        sa.Column("direction", sa.String(length=10), nullable=False),
+        sa.Column("direction", swipe_direction, nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -63,7 +84,6 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint("swiper_user_id <> target_user_id", name="ck_swipe_not_self"),
-        sa.CheckConstraint("direction IN ('like', 'pass')", name="ck_swipe_direction"),
         sa.ForeignKeyConstraint(["swiper_user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["target_user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -128,3 +148,4 @@ def downgrade() -> None:
     op.drop_table("swipes")
     op.drop_table("profiles")
     op.drop_table("users")
+    _drop_phase_a_enums()

@@ -14,10 +14,33 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.enums import (
+    HAIR_COLOR,
+    LOOKING_FOR,
+    PROFILE_GENDER,
+    SWIPE_DIRECTION,
+    HairColor,
+    LookingFor,
+    ProfileGender,
+    SwipeDirection,
+)
+
+profile_gender_type = ENUM(
+    ProfileGender, name=PROFILE_GENDER, create_type=False, values_callable=lambda x: [e.value for e in x]
+)
+hair_color_type = ENUM(
+    HairColor, name=HAIR_COLOR, create_type=False, values_callable=lambda x: [e.value for e in x]
+)
+looking_for_type = ENUM(
+    LookingFor, name=LOOKING_FOR, create_type=False, values_callable=lambda x: [e.value for e in x]
+)
+swipe_direction_type = ENUM(
+    SwipeDirection, name=SWIPE_DIRECTION, create_type=False, values_callable=lambda x: [e.value for e in x]
+)
 
 
 class User(Base):
@@ -55,9 +78,9 @@ class Profile(Base):
     bio: Mapped[str | None] = mapped_column(Text)
     birth_date: Mapped[date | None] = mapped_column(Date)
     city: Mapped[str | None] = mapped_column(String(120))
-    gender: Mapped[str | None] = mapped_column(String(40))
-    looking_for: Mapped[str | None] = mapped_column(String(40))
-    hair_color: Mapped[str | None] = mapped_column(String(40))
+    gender: Mapped[ProfileGender | None] = mapped_column(profile_gender_type)
+    looking_for: Mapped[LookingFor | None] = mapped_column(looking_for_type)
+    hair_color: Mapped[HairColor | None] = mapped_column(hair_color_type)
     height_cm: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -67,7 +90,7 @@ class Profile(Base):
 
 
 class DatingPreferences(Base):
-    """Stated partner filters; compare to actual partners via matches + their profiles."""
+    """Stated partner filters (scalar row); multi-valued filters in child tables (1NF)."""
 
     __tablename__ = "dating_preferences"
     __table_args__ = (
@@ -90,14 +113,40 @@ class DatingPreferences(Base):
     )
     partner_age_min: Mapped[int | None] = mapped_column(Integer)
     partner_age_max: Mapped[int | None] = mapped_column(Integer)
-    partner_genders: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
-    partner_hair_colors: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     prefer_same_city: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
     user: Mapped[User] = relationship(back_populates="dating_preferences")
+    partner_genders: Mapped[list[DatingPreferenceGender]] = relationship(
+        back_populates="preferences", cascade="all, delete-orphan"
+    )
+    partner_hair_colors: Mapped[list[DatingPreferenceHairColor]] = relationship(
+        back_populates="preferences", cascade="all, delete-orphan"
+    )
+
+
+class DatingPreferenceGender(Base):
+    __tablename__ = "dating_preference_genders"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("dating_preferences.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    gender: Mapped[ProfileGender] = mapped_column(profile_gender_type, primary_key=True)
+
+    preferences: Mapped[DatingPreferences] = relationship(back_populates="partner_genders")
+
+
+class DatingPreferenceHairColor(Base):
+    __tablename__ = "dating_preference_hair_colors"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("dating_preferences.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    hair_color: Mapped[HairColor] = mapped_column(hair_color_type, primary_key=True)
+
+    preferences: Mapped[DatingPreferences] = relationship(back_populates="partner_hair_colors")
 
 
 class Swipe(Base):
@@ -105,7 +154,6 @@ class Swipe(Base):
     __table_args__ = (
         UniqueConstraint("swiper_user_id", "target_user_id", name="uq_swipe_pair"),
         CheckConstraint("swiper_user_id <> target_user_id", name="ck_swipe_not_self"),
-        CheckConstraint("direction IN ('like', 'pass')", name="ck_swipe_direction"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -115,7 +163,7 @@ class Swipe(Base):
     target_user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    direction: Mapped[str] = mapped_column(String(10), nullable=False)
+    direction: Mapped[SwipeDirection] = mapped_column(swipe_direction_type, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

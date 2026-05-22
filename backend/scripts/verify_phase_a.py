@@ -28,6 +28,8 @@ TABLES_EXPECTED = (
     "users",
     "profiles",
     "dating_preferences",
+    "dating_preference_genders",
+    "dating_preference_hair_colors",
     "swipes",
     "matches",
     "messages",

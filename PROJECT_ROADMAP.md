@@ -54,7 +54,7 @@ Use this table when writing the report so every artifact is tied to a rubric lin
 
 **What a reader should know to reconstruct your schema (answer this explicitly in the final report):**
 
-- There are **users** (accounts). Each user has at most one **profile** (bio, age, location, photos metadata, preferences).
+- There are **users** (accounts). Each user has at most one **profile** (bio, age, city, gender, height, hobbies) and optional **dating preferences** (partner age range, city preference, preferred genders, preferred hobbies).
 - Users perform **swipes** (or likes/passes) toward other users’ profiles; direction and timestamp matter.
 - A **match** exists when two users have mutually indicated interest (define the rule precisely in prose, e.g. “both swiped right within the product rules”).
 - **Messages** belong to a match (or to a conversation derived from a match) and have sender, body, timestamp.
@@ -119,10 +119,9 @@ Recommend **candidate profiles** where **all** of the following hold (tune “ma
 |------|--------|----------------|-----------------|
 | **Not already swiped** | Exclude any `swipes` row for `(swiper, target)` | `swipes` + `uq_swipe_pair` | `NOT EXISTS` on `swipes` |
 | **Not self** | `target.user_id <> swiper` | `profiles.user_id` | `WHERE` clause |
-| **Looking-for fit** *(maybe)* | Swiper’s `looking_for` compatible with target’s `gender` (e.g. `women` → `woman`; `everyone` → any) | `profiles.looking_for`, `profiles.gender` ENUMs | `CASE` / OR conditions in SQL |
 | **Same city** *(maybe)* | If swiper has `dating_preferences.prefer_same_city = true`, require `profiles.city` match | `profiles.city`, `prefer_same_city` | join `dating_preferences` |
 | **Active recently** *(maybe)* | Prefer targets with recent `profiles.updated_at` (e.g. last 30 days) | `profiles.updated_at` | `WHERE updated_at >= …` + `ORDER BY updated_at DESC` |
-| **Stated preferences** *(maybe)* | Target age in swiper’s `partner_age_min` / `partner_age_max`; target `gender` in `dating_preference_genders`; target `hair_color` in `dating_preference_hair_colors` | `dating_preferences` + 1NF child tables, `birth_date` | joins + age from `birth_date`; skip row if preference sets empty |
+| **Stated preferences** *(maybe)* | Target age in swiper’s `partner_age_min` / `partner_age_max`; target `gender` in `dating_preference_genders`; at least one shared hobby between target’s `profile_hobbies` and swiper’s `dating_preference_hobbies` | `dating_preferences` + 1NF child tables, `birth_date` | joins + age from `birth_date`; skip row if preference sets empty |
 
 **Phase A vs Phase B:** Phase A **already stores** every column/table above (see `db/schema.sql`). Phase A does **not** implement the batch API — only schema, seed, indexes. Phase B adds `GET /discovery/batch` with the SQL below.
 
@@ -137,12 +136,6 @@ WHERE p.user_id <> :swiper_id
     SELECT 1 FROM swipes s
     WHERE s.swiper_user_id = :swiper_id AND s.target_user_id = p.user_id
   )
-  -- looking_for ↔ gender (illustrative; lock rules in code)
-  AND (
-    (SELECT looking_for FROM profiles WHERE user_id = :swiper_id) = 'everyone'
-    OR (SELECT looking_for FROM profiles WHERE user_id = :swiper_id) = 'women' AND p.gender = 'woman'
-    OR (SELECT looking_for FROM profiles WHERE user_id = :swiper_id) = 'men' AND p.gender = 'man'
-  )
   AND (
     NOT dp.prefer_same_city
     OR p.city IS NOT DISTINCT FROM (SELECT city FROM profiles WHERE user_id = :swiper_id)
@@ -156,14 +149,18 @@ WHERE p.user_id <> :swiper_id
     OR p.gender IN (SELECT gender FROM dating_preference_genders WHERE user_id = :swiper_id)
   )
   AND (
-    NOT EXISTS (SELECT 1 FROM dating_preference_hair_colors dph WHERE dph.user_id = :swiper_id)
-    OR p.hair_color IN (SELECT hair_color FROM dating_preference_hair_colors WHERE user_id = :swiper_id)
+    NOT EXISTS (SELECT 1 FROM dating_preference_hobbies dph WHERE dph.user_id = :swiper_id)
+    OR EXISTS (
+      SELECT 1 FROM profile_hobbies ph
+      JOIN dating_preference_hobbies dph ON dph.hobby = ph.hobby
+      WHERE ph.user_id = p.user_id AND dph.user_id = :swiper_id
+    )
   )
 ORDER BY p.updated_at DESC NULLS LAST
 LIMIT 20;
 ```
 
-If the batch returns **too few** rows, relax in order: drop hair filter → drop gender preference → widen age → drop same-city → drop looking-for (never drop “not swiped” / “not self”).
+If the batch returns **too few** rows, relax in order: drop hobby filter → drop gender preference → widen age → drop same-city (never drop “not swiped” / “not self”).
 
 **Optional twist (later):** After **30 days**, **passed** profiles may reappear — skip in v1 unless needed for the report.
 
@@ -209,11 +206,11 @@ If the batch returns **too few** rows, relax in order: drop hair filter → drop
 | Same `profiles.city` | +30 |
 | Age difference &lt; 3 years (from `birth_date`) | +10 |
 | Both users sent &gt; 5 messages in this match | +20 |
-| Each shared interest (see below) | +20 |
+| Each shared hobby (`profile_hobbies` overlap) | +20 |
 
 Cap at 100%. Document the formula in the report.
 
-**Schema note:** “Shared interests” needs a **`user_interests`** (or tags) table — **not in Phase A DDL yet**. Either add it in Phase B or **omit interest points in v1** (city + age + messages only — still demo-ready).
+**Schema note:** “Shared interests” uses the existing `profile_hobbies` table — already in the schema. Count overlapping hobbies between the two matched users' `profile_hobbies` rows.
 
 **Demo / course value:** joins, computed columns, optional `VIEW`; great screenshots.
 
@@ -221,7 +218,7 @@ Cap at 100%. Document the formula in the report.
 
 | Item | Verdict |
 |------|---------|
-| Simple recommendation filters (not swiped, not self, looking_for, city, recency, prefs) | **Include** — Phase A schema + indexes; Phase B batch SQL |
+| Simple recommendation filters (not swiped, not self, city, recency, gender prefs, hobby overlap) | **Include** — Phase A schema + indexes; Phase B batch SQL |
 | Batch queue (one query per batch, insert per swipe) | **Include** — recommended default for Feature 1 |
 | 30-day re-show passes | **Optional** — adds time-based exclusion rules |
 | Premium view others’ stats | **Optional** — needs `is_premium` + permissions; **ask team** before committing |
@@ -238,7 +235,7 @@ Adjust names to taste; keep **normalization** and **clear FKs** for the course.
 **Core tables (typical):**
 
 - `users` — `id`, email, password_hash (or auth provider id), `created_at`, …  
-- `profiles` — `user_id` (PK/FK), `display_name`, `bio`, `birth_date`, `latitude`, `longitude` or `city`, `gender`, `looking_for`, …  
+- `profiles` — `user_id` (PK/FK), `display_name`, `bio`, `birth_date`, `city`, `gender`, `height_cm`, …  
 - `photos` (optional) — `id`, `profile_user_id`, `url`, `sort_order`  
 - `swipes` — `id`, `swiper_user_id`, `target_user_id`, `direction` (enum: smash / pass), `created_at`; **unique** `(swiper_user_id, target_user_id)` if one decision per pair  
 - `matches` — `id`, `user_a_id`, `user_b_id`, `created_at`; **unique** unordered pair (enforce `user_a_id < user_b_id` in app or with a check)  
@@ -246,7 +243,7 @@ Adjust names to taste; keep **normalization** and **clear FKs** for the course.
 
 **Optional extensions (only if you need them for queries or UI):**
 
-- `user_interests` / `tags` — for **compatibility score** (§2.5 #4); skip if v1 uses city/age/messages only  
+- `profile_hobbies` / `dating_preference_hobbies` — already in schema; use for **compatibility score** (§2.5 #4) shared-hobby points  
 - `match_streaks` — optional cache for **message streaks** (§2.5 #3); else compute from `messages`  
 - `users.is_premium` — only if you build **premium stats** (§2.5 #2)  
 - `blocks` / `reports` for safety narrative  

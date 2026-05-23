@@ -25,21 +25,21 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 load_dotenv(ROOT / ".env")
 
-from app.enums import HairColor, LookingFor, ProfileGender, SwipeDirection  # noqa: E402
+from app.enums import Hobby, ProfileGender, SwipeDirection  # noqa: E402
 from app.models import (  # noqa: E402
     DatingPreferenceGender,
-    DatingPreferenceHairColor,
+    DatingPreferenceHobby,
     DatingPreferences,
     Match,
     Message,
     Profile,
+    ProfileHobby,
     Swipe,
     User,
 )
 
-HAIR_COLORS = tuple(HairColor)
+HOBBIES = tuple(Hobby)
 GENDERS = tuple(ProfileGender)
-LOOKING_FOR_OPTIONS = tuple(LookingFor)
 
 
 def age_years(birth: date, today: date | None = None) -> int:
@@ -84,8 +84,6 @@ def main() -> None:
                 birth_date=bd,
                 city=fake.city(),
                 gender=random.choice([*GENDERS, None]),
-                looking_for=random.choice([*LOOKING_FOR_OPTIONS, None]),
-                hair_color=random.choice(HAIR_COLORS),
                 height_cm=random.randint(155, 198),
             )
             session.add(profile)
@@ -102,7 +100,8 @@ def main() -> None:
             if p_min > p_max:
                 p_min, p_max = p_max, p_min
             g_choices = random.sample(GENDERS, k=random.randint(1, len(GENDERS)))
-            h_choices = random.sample(HAIR_COLORS, k=random.randint(1, 4))
+            hobby_choices = random.sample(HOBBIES, k=random.randint(1, 5))
+            pref_hobby_choices = random.sample(HOBBIES, k=random.randint(1, 5))
             session.add(
                 DatingPreferences(
                     user_id=p.user_id,
@@ -113,8 +112,10 @@ def main() -> None:
             )
             for g in g_choices:
                 session.add(DatingPreferenceGender(user_id=p.user_id, gender=g))
-            for h in h_choices:
-                session.add(DatingPreferenceHairColor(user_id=p.user_id, hair_color=h))
+            for h in hobby_choices:
+                session.add(ProfileHobby(user_id=p.user_id, hobby=h))
+            for h in pref_hobby_choices:
+                session.add(DatingPreferenceHobby(user_id=p.user_id, hobby=h))
 
         ids = [u.id for u in users]
         seen_pairs: set[tuple[int, int]] = set()
@@ -161,8 +162,8 @@ def main() -> None:
 
         session.commit()
         print(
-            f"Seeded {len(users)} users + dating_preferences, {len(swipes)} swipes, "
-            f"{len(matches)} matches, messages committed."
+            f"Seeded {len(users)} users + profiles/hobbies/dating_preferences, "
+            f"{len(swipes)} swipes, {len(matches)} matches, messages committed."
         )
 
 

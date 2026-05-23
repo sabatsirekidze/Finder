@@ -1,4 +1,4 @@
-// Finder — sync with db/schema.sql (Alembic 001 + 002)
+// Finder — sync with db/schema.sql (Alembic 001 + 002 + 003 + 004)
 
 Enum swipe_direction {
   smash
@@ -11,19 +11,21 @@ Enum profile_gender {
   nonbinary
 }
 
-Enum looking_for {
-  women
-  men
-  everyone
-}
-
-Enum hair_color {
-  black
-  brown
-  blonde
-  red
-  gray
-  other
+Enum hobby {
+  hiking
+  gaming
+  cooking
+  reading
+  travel
+  music
+  sports
+  art
+  fitness
+  photography
+  yoga
+  dancing
+  movies
+  pets
 }
 
 Table users {
@@ -34,92 +36,120 @@ Table users {
 }
 
 Table profiles {
-  user_id int [pk, ref: > users.id]
+  user_id int [pk]
   display_name varchar(120) [not null]
   bio text
   birth_date date
   city varchar(120)
   gender profile_gender
-  looking_for looking_for
-  hair_color hair_color
   height_cm int
   updated_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (hair_color)
-    (updated_at)
-    (city)
+    (updated_at) [name: "ix_profiles_updated_at"]
+    (city) [name: "ix_profiles_city"]
+  }
+
+  Note: 'Check: ck_profiles_height_cm — height_cm IS NULL OR (height_cm BETWEEN 120 AND 230)'
+}
+
+Table profile_hobbies {
+  user_id int [not null]
+  hobby hobby [not null]
+
+  indexes {
+    (user_id, hobby) [pk]
+    (hobby) [name: "ix_profile_hobbies_hobby"]
   }
 }
 
 Table dating_preferences {
-  user_id int [pk, ref: > users.id]
+  user_id int [pk]
   partner_age_min int
   partner_age_max int
   prefer_same_city boolean [not null, default: false]
   updated_at timestamptz [not null, default: `now()`]
 
-  Note: 'Scalar filters only (1NF). Multi-valued partner genders/hair colors live in child tables below.'
+  Note: 'Scalar filters only (1NF). Multi-valued partner genders/hobbies live in child tables below. Checks: ck_dp_partner_age_min (18–99), ck_dp_partner_age_max (18–99), ck_dp_partner_age_order (min ≤ max).'
 }
 
 Table dating_preference_genders {
-  user_id int [not null, ref: > dating_preferences.user_id]
+  user_id int [not null]
   gender profile_gender [not null]
 
   indexes {
     (user_id, gender) [pk]
-    (gender)
+    (gender) [name: "ix_dating_preference_genders_gender"]
   }
 }
 
-Table dating_preference_hair_colors {
-  user_id int [not null, ref: > dating_preferences.user_id]
-  hair_color hair_color [not null]
+Table dating_preference_hobbies {
+  user_id int [not null]
+  hobby hobby [not null]
 
   indexes {
-    (user_id, hair_color) [pk]
-    (hair_color)
+    (user_id, hobby) [pk]
+    (hobby) [name: "ix_dating_preference_hobbies_hobby"]
   }
 }
 
 Table swipes {
   id int [pk, increment]
-  swiper_user_id int [not null, ref: > users.id]
-  target_user_id int [not null, ref: > users.id]
+  swiper_user_id int [not null]
+  target_user_id int [not null]
   direction swipe_direction [not null]
   created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (swiper_user_id)
-    (target_user_id)
-    (target_user_id, created_at)
+    (swiper_user_id) [name: "ix_swipes_swiper_user_id"]
+    (target_user_id) [name: "ix_swipes_target_user_id"]
+    (target_user_id, created_at) [name: "ix_swipes_target_created"]
+    (swiper_user_id, target_user_id) [unique, name: "uq_swipe_pair"]
   }
+
+  Note: 'Check: ck_swipe_not_self — swiper_user_id <> target_user_id'
 }
 
 Table matches {
   id int [pk, increment]
-  user_low_id int [not null, ref: > users.id, note: 'always smaller users.id']
-  user_high_id int [not null, ref: > users.id, note: 'always larger users.id']
+  user_low_id int [not null, note: 'always smaller users.id']
+  user_high_id int [not null, note: 'always larger users.id']
   created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (user_low_id)
-    (user_high_id)
+    (user_low_id) [name: "ix_matches_user_low_id"]
+    (user_high_id) [name: "ix_matches_user_high_id"]
+    (user_low_id, user_high_id) [unique, name: "uq_match_pair"]
   }
+
+  Note: 'Check: ck_match_order — user_low_id < user_high_id'
 }
 
 Table messages {
   id int [pk, increment]
-  match_id int [not null, ref: > matches.id]
-  sender_user_id int [not null, ref: > users.id]
+  match_id int [not null]
+  sender_user_id int [not null]
   body text [not null]
   created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (match_id)
-    (sender_user_id)
-    (match_id, created_at)
+    (match_id) [name: "ix_messages_match_id"]
+    (sender_user_id) [name: "ix_messages_sender_user_id"]
+    (match_id, created_at) [name: "ix_messages_match_created"]
   }
 
   Note: 'Chat thread key: user taps a match in the list → app uses matches.id → SELECT messages WHERE match_id = …. Storing both user ids on each message would duplicate the match row and complicate history queries.'
 }
+
+// Foreign keys (all ON DELETE CASCADE)
+Ref: profiles.user_id > users.id [delete: cascade]
+Ref: profile_hobbies.user_id > users.id [delete: cascade]
+Ref: dating_preferences.user_id > users.id [delete: cascade]
+Ref: dating_preference_genders.user_id > dating_preferences.user_id [delete: cascade]
+Ref: dating_preference_hobbies.user_id > dating_preferences.user_id [delete: cascade]
+Ref: swipes.swiper_user_id > users.id [delete: cascade]
+Ref: swipes.target_user_id > users.id [delete: cascade]
+Ref: matches.user_low_id > users.id [delete: cascade]
+Ref: matches.user_high_id > users.id [delete: cascade]
+Ref: messages.match_id > matches.id [delete: cascade]
+Ref: messages.sender_user_id > users.id [delete: cascade]

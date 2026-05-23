@@ -19,12 +19,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.enums import (
-    HAIR_COLOR,
-    LOOKING_FOR,
+    HOBBY,
     PROFILE_GENDER,
     SWIPE_DIRECTION,
-    HairColor,
-    LookingFor,
+    Hobby,
     ProfileGender,
     SwipeDirection,
 )
@@ -32,11 +30,8 @@ from app.enums import (
 profile_gender_type = ENUM(
     ProfileGender, name=PROFILE_GENDER, create_type=False, values_callable=lambda x: [e.value for e in x]
 )
-hair_color_type = ENUM(
-    HairColor, name=HAIR_COLOR, create_type=False, values_callable=lambda x: [e.value for e in x]
-)
-looking_for_type = ENUM(
-    LookingFor, name=LOOKING_FOR, create_type=False, values_callable=lambda x: [e.value for e in x]
+hobby_type = ENUM(
+    Hobby, name=HOBBY, create_type=False, values_callable=lambda x: [e.value for e in x]
 )
 swipe_direction_type = ENUM(
     SwipeDirection, name=SWIPE_DIRECTION, create_type=False, values_callable=lambda x: [e.value for e in x]
@@ -56,6 +51,9 @@ class User(Base):
     profile: Mapped[Profile | None] = relationship(back_populates="user", uselist=False)
     dating_preferences: Mapped[DatingPreferences | None] = relationship(
         back_populates="user", uselist=False
+    )
+    hobbies: Mapped[list[ProfileHobby]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
     swipes_made: Mapped[list[Swipe]] = relationship(
         foreign_keys="Swipe.swiper_user_id", back_populates="swiper"
@@ -79,8 +77,6 @@ class Profile(Base):
     birth_date: Mapped[date | None] = mapped_column(Date)
     city: Mapped[str | None] = mapped_column(String(120))
     gender: Mapped[ProfileGender | None] = mapped_column(profile_gender_type)
-    looking_for: Mapped[LookingFor | None] = mapped_column(looking_for_type)
-    hair_color: Mapped[HairColor | None] = mapped_column(hair_color_type)
     height_cm: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -122,7 +118,7 @@ class DatingPreferences(Base):
     partner_genders: Mapped[list[DatingPreferenceGender]] = relationship(
         back_populates="preferences", cascade="all, delete-orphan"
     )
-    partner_hair_colors: Mapped[list[DatingPreferenceHairColor]] = relationship(
+    partner_hobbies: Mapped[list[DatingPreferenceHobby]] = relationship(
         back_populates="preferences", cascade="all, delete-orphan"
     )
 
@@ -138,15 +134,26 @@ class DatingPreferenceGender(Base):
     preferences: Mapped[DatingPreferences] = relationship(back_populates="partner_genders")
 
 
-class DatingPreferenceHairColor(Base):
-    __tablename__ = "dating_preference_hair_colors"
+class DatingPreferenceHobby(Base):
+    __tablename__ = "dating_preference_hobbies"
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("dating_preferences.user_id", ondelete="CASCADE"), primary_key=True
     )
-    hair_color: Mapped[HairColor] = mapped_column(hair_color_type, primary_key=True)
+    hobby: Mapped[Hobby] = mapped_column(hobby_type, primary_key=True)
 
-    preferences: Mapped[DatingPreferences] = relationship(back_populates="partner_hair_colors")
+    preferences: Mapped[DatingPreferences] = relationship(back_populates="partner_hobbies")
+
+
+class ProfileHobby(Base):
+    __tablename__ = "profile_hobbies"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    hobby: Mapped[Hobby] = mapped_column(hobby_type, primary_key=True)
+
+    user: Mapped[User] = relationship(back_populates="hobbies")
 
 
 class Swipe(Base):

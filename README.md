@@ -1,99 +1,113 @@
 # Finder
 
-Custom Tinder-like dating app (course project). **Phase A** adds the database foundation only — see [`docs/PHASES.md`](docs/PHASES.md) for how later phases are split.
+Custom Tinder-like dating app (course project). See [`docs/PHASES.md`](docs/PHASES.md) for the phase breakdown.
 
-**Course-oriented database write-up** (domain, entities, user paths, `user_low`/`user_high`, preferences vs behavior): [`docs/DATABASE_COURSE_DESCRIPTION.md`](docs/DATABASE_COURSE_DESCRIPTION.md).
+**Course-oriented database write-up:** [`docs/DATABASE_COURSE_DESCRIPTION.md`](docs/DATABASE_COURSE_DESCRIPTION.md).
 
-## Phase A — run locally
+## Quick start
 
 **Prerequisites:** Docker Desktop, Python 3.11+.
 
-1. Copy environment file:
+### 1. Environment
 
-   ```bash
-   copy .env.example .env
-   ```
+```bash
+cp .env.example .env   # Mac/Linux
+copy .env.example .env # Windows
+```
 
-2. Start PostgreSQL:
+### 2. Start PostgreSQL
 
-   ```bash
-   docker compose up -d
-   ```
+```bash
+docker compose up -d
+```
 
-3. Create a venv and install backend tooling (kept minimal on purpose):
+### 3. Install backend dependencies
 
-   ```bash
-   cd backend
-   python -m venv .venv
-   .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-4. Apply migrations (from `backend/` with venv active):
-
-   ```bash
-   alembic upgrade head
-   ```
-
-5. Seed fake data:
-
-   ```bash
-   python ..\db\seeds\seed.py
-   ```
-
-6. **ERD image for the report:** paste `db/schema.dbml` into [dbdiagram.io](https://dbdiagram.io) and export — see [`docs/images/README.md`](docs/images/README.md).
-
-### Test Phase A (smoke check)
-
-With Docker Desktop **running** and steps 1–5 done (or at least DB up + `alembic upgrade head`):
-
-```powershell
+```bash
 cd backend
-.\.venv\Scripts\activate
-python scripts\verify_phase_a.py
+python -m venv .venv
+
+# Mac/Linux
+source .venv/bin/activate
+# Windows
+.venv\Scripts\activate
+
+pip install -r requirements.txt
 ```
 
-Or from the scripts folder:
+### 4. Apply migrations
 
-```powershell
-cd backend\scripts
-..\.venv\Scripts\activate
-python verify_phase_a.py
+```bash
+# from backend/ with venv active
+alembic upgrade head
 ```
 
-You should see `OK: connected`, all tables listed (including `dating_preference_genders` and `dating_preference_hair_colors`), Alembic revision `002_dating_preferences`, and non-zero row counts after seeding.
+### 5. Seed fake data
 
-**Schema changed on an existing DB?** Reset volumes (see **Reset database** below) or run `alembic upgrade head` for new revisions (e.g. `003_discovery_indexes`).
-
-**Optional manual SQL** (password `finder` from `.env.example`):
-
-```powershell
-docker exec -it finder-postgres-1 psql -U finder -d finder -c "SELECT COUNT(*) FROM users;"
+```bash
+# Mac/Linux
+python ../db/seeds/seed.py
+# Windows
+python ..\db\seeds\seed.py
 ```
 
-If your container name differs, run `docker ps` and substitute the `postgres` service container name.
+### 6. Start the backend server
 
-**No Docker?** Install PostgreSQL locally, set `DATABASE_URL` in `.env` to your instance, then run `alembic upgrade head`, `python ..\db\seeds\seed.py`, and `python scripts\verify_phase_a.py` again.
+```bash
+# from backend/ with venv active
+uvicorn app.main:app --reload
+```
 
-### Layout
+API is now running at **http://localhost:8000**.  
+Interactive docs (Swagger UI): **http://localhost:8000/docs**
+
+---
+
+## Viewing the database
+
+Use **TablePlus** (recommended, free tier sufficient) or DBeaver:
+
+| Field    | Value       |
+|----------|-------------|
+| Host     | `localhost` |
+| Port     | `5432`      |
+| User     | `finder`    |
+| Password | `finder`    |
+| Database | `finder`    |
+
+---
+
+## Smoke check (Phase A)
+
+```bash
+# from backend/ with venv active
+python scripts/verify_phase_a.py
+```
+
+---
+
+## Layout
 
 | Path | Purpose |
 |------|---------|
 | `docker-compose.yml` | Local Postgres 16 |
-| `backend/app/models.py` | SQLAlchemy models (source of truth with migrations) |
-| `backend/alembic/` | Schema revisions |
-| `db/schema.sql` | Canonical DDL copy for submissions |
-| `db/schema.dbml` | DBML for dbdiagram |
-| `db/seeds/seed.py` | Faker seed |
+| `backend/app/main.py` | FastAPI entry point |
+| `backend/app/models.py` | SQLAlchemy models |
+| `backend/app/routers/` | Route handlers (auth, profiles, discovery, swipes, matches, messages, stats) |
+| `backend/alembic/` | Schema migrations |
+| `db/schema.dbml` | DBML for [dbdiagram.io](https://dbdiagram.io) |
+| `db/seeds/seed.py` | Faker seed script |
 
-### Reset database
+---
 
-Use this after pulling schema changes on Phase A (e.g. ENUM types, 1NF preference tables):
+## Reset database
+
+Use after pulling schema changes or to start fresh:
 
 ```bash
 docker compose down -v
 docker compose up -d
 cd backend
 alembic upgrade head
-python ..\db\seeds\seed.py
+python ../db/seeds/seed.py  # Mac/Linux
 ```
